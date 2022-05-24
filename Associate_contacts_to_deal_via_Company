@@ -1,0 +1,51 @@
+const hubspot = require('@hubspot/api-client');
+
+exports.main = (event, callback) => {
+  const hubspotClient = new hubspot.Client({
+    apiKey: process.env.HAPIKEY,
+  });
+
+  //get company associated with the deal
+  hubspotClient.crm.deals.associationsApi
+    .getAll(event.object.objectId, 'company')
+    .then(results => {
+      if (results.body.results.length == 0) {
+        console.log("deal doesn't have any associated companies");
+        return;
+      }
+
+      let companyId = results.body.results[0].id;
+      console.log(`The deal's associated company ID is ${companyId}`);
+
+    //get contacts associated with the company
+      hubspotClient.crm.companies.associationsApi
+        .getAll(companyId, 'contacts')
+        .then(results => {
+         let associatedContactIds = results.body.results.map(contact => contact.id);
+          console.log(`The company's associated deal IDs are ${associatedContactIds.join(', ')}`);
+	//Batch associated deal to contacts
+          let batchInput = createJSONBody(event.object.objectId, associatedContactIds);
+          hubspotClient.crm.associations.batchApi
+           .create('deal', 'contact', batchInput)
+           .then(result => console.log(`Associated ${associatedContactIds.length} contacts with the associated deal`));
+        });
+    });
+};
+
+//Create the JSON body for batching From Deal -> Contact
+function createJSONBody(dealId, contactIds) {
+  return {
+    inputs: contactIds.map(contactId => {
+      return {
+        from: {
+          id: dealId
+        },
+        to: {
+          id: contactId
+        },
+        type: 'deal_to_contact'
+      };
+    })
+  };
+  
+}
